@@ -1,3 +1,5 @@
+import { LOCAL_STORAGE_KEYS } from '../constants/localStorageKeys';
+import { SORTBY } from '../constants/sortBy';
 import { Category } from '../types/Category';
 import { Restaurant } from '../types/Restaurant';
 import { Restaurants } from '../types/Restaurants';
@@ -5,22 +7,27 @@ import { SortBy } from '../types/SortBy';
 
 type RestaurantDataProviderType = {
   execute: ({ category, sortBy }: ExecuteProps) => Restaurants;
-  filterByCategory: ({ category, allRestaurants }: FilterByCategoryProps) => Restaurants;
+  filterByCategory: ({
+    category,
+    filterByLikedAllRestaurants,
+  }: FilterByCategoryProps) => Restaurants;
   sortRestaurants: ({ sortBy, filterRestaurants }: SortRestaurantsProps) => Restaurants;
   sortByCreatedAt: ({ sortBy, filterRestaurants }: SortRestaurantsProps) => Restaurants;
   sortByName: ({ sortBy, filterRestaurants }: SortRestaurantsProps) => Restaurants;
   compareNameOrder: (a: Restaurant, b: Restaurant) => number;
   sortByDistance: ({ sortBy, filterRestaurants }: SortRestaurantsProps) => Restaurants;
+  filterByLiked: ({ allRestaurants, liked }: FilterByLikedProps) => Restaurants;
 };
 
 type ExecuteProps = {
   category?: Category;
   sortBy?: SortBy;
+  liked: boolean;
 };
 
 type FilterByCategoryProps = {
   category?: Category;
-  allRestaurants: Restaurants;
+  filterByLikedAllRestaurants: Restaurants;
 };
 
 type SortRestaurantsProps = {
@@ -28,33 +35,39 @@ type SortRestaurantsProps = {
   filterRestaurants: Restaurants;
 };
 
+type FilterByLikedProps = {
+  allRestaurants: Restaurants;
+  liked: boolean;
+};
+
 /**
  * local에 저장된 key의 value 값을 array로 반환
  * @return {Array}
  */
 const RestaurantDataProvider: RestaurantDataProviderType = {
-  execute({ category, sortBy }: ExecuteProps): Restaurants {
-    const restaurants = localStorage.getItem('restaurants');
-    const allRestaurants = JSON.parse(restaurants || '[]');
+  execute({ category, sortBy, liked }: ExecuteProps): Restaurants {
+    const restaurants = localStorage.getItem(LOCAL_STORAGE_KEYS.restaurants);
+    const allRestaurants = JSON.parse(restaurants ?? '[]');
 
+    const filterByLikedAllRestaurants = this.filterByLiked({ allRestaurants, liked });
     const filterRestaurants = category
-      ? this.filterByCategory({ category, allRestaurants })
-      : allRestaurants;
+      ? this.filterByCategory({ category, filterByLikedAllRestaurants })
+      : filterByLikedAllRestaurants;
     const sortedRestaurants = this.sortRestaurants({ sortBy, filterRestaurants });
     return sortedRestaurants;
   },
 
-  filterByCategory({ category, allRestaurants }: FilterByCategoryProps): Restaurants {
-    return Object.values(allRestaurants).filter((restaurant) => {
-      return restaurant.category === category;
-    });
+  filterByCategory({ category, filterByLikedAllRestaurants }: FilterByCategoryProps): Restaurants {
+    return Object.values(filterByLikedAllRestaurants).filter(
+      (restaurant) => restaurant.category === category,
+    );
   },
 
   sortRestaurants({ sortBy, filterRestaurants }: SortRestaurantsProps): Restaurants {
-    if (!sortBy || sortBy === '최신순' || sortBy === '오래된순') {
+    if (!sortBy || sortBy === SORTBY.newest || sortBy === SORTBY.oldest) {
       return this.sortByCreatedAt({ sortBy, filterRestaurants });
     }
-    if (sortBy === '가게명순▲' || sortBy === '가게명순▼') {
+    if (sortBy === SORTBY.nameAscending || sortBy === SORTBY.nameDescending) {
       return this.sortByName({ sortBy, filterRestaurants });
     }
     return this.sortByDistance({ sortBy, filterRestaurants });
@@ -62,7 +75,7 @@ const RestaurantDataProvider: RestaurantDataProviderType = {
 
   sortByCreatedAt({ sortBy, filterRestaurants }: SortRestaurantsProps): Restaurants {
     return Object.values(filterRestaurants).sort((a: Restaurant, b: Restaurant): number => {
-      if (sortBy === '오래된순') {
+      if (sortBy === SORTBY.oldest) {
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -71,7 +84,7 @@ const RestaurantDataProvider: RestaurantDataProviderType = {
 
   sortByName({ sortBy, filterRestaurants }: SortRestaurantsProps): Restaurants {
     return Object.values(filterRestaurants).sort((a: Restaurant, b: Restaurant): number => {
-      if (sortBy === '가게명순▲') {
+      if (sortBy === SORTBY.nameAscending) {
         return this.compareNameOrder(a, b);
       }
       return -this.compareNameOrder(a, b);
@@ -79,19 +92,23 @@ const RestaurantDataProvider: RestaurantDataProviderType = {
   },
 
   compareNameOrder(a: Restaurant, b: Restaurant): number {
-    if (a.name.toUpperCase() > b.name.toUpperCase()) {
-      return 1;
-    }
-    return -1;
+    return a.name.localeCompare(b.name);
   },
 
   sortByDistance({ sortBy, filterRestaurants }: SortRestaurantsProps): Restaurants {
     return Object.values(filterRestaurants).sort((a: Restaurant, b: Restaurant): number => {
-      if (sortBy === '거리순▲') {
+      if (sortBy === SORTBY.distanceAscending) {
         return a.distance - b.distance;
       }
       return b.distance - a.distance;
     });
+  },
+
+  filterByLiked({ allRestaurants, liked }: FilterByLikedProps): Restaurants {
+    if (liked) {
+      return allRestaurants.filter((restaurant) => restaurant.liked === liked);
+    }
+    return allRestaurants;
   },
 };
 
